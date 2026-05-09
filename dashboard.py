@@ -1,0 +1,538 @@
+"""
+dashboard.py
+FAERS Adverse Event Analysis — GLP-1 Agonists
+Genera el dashboard HTML interactivo con los datos reales de FAERS.
+
+Author: María Paula Vera Morandini
+ICH-GCP E6(R3) | ANMAT 7516/25
+"""
+
+import pandas as pd
+import json
+from datetime import datetime
+
+# ── Cargar datos analizados ───────────────────────────────────────────────────
+with open("faers_kpis.json") as f:
+    kpis = json.load(f)
+
+top_reactions  = pd.read_csv("faers_top_reactions.csv")
+by_drug        = pd.read_csv("faers_reactions_by_drug.csv")
+sex_dist       = pd.read_csv("faers_sex_dist.csv")
+outcome_dist   = pd.read_csv("faers_outcome_dist.csv")
+yearly         = pd.read_csv("faers_yearly.csv")
+age_dist       = pd.read_csv("faers_age_dist.csv")
+serious_df     = pd.read_csv("faers_serious.csv")
+
+# ── Serializar a JSON ─────────────────────────────────────────────────────────
+drugs = sorted(by_drug["drug"].unique().tolist())
+drug_colors = {
+    "Semaglutide": "#2563EB",
+    "Liraglutide": "#7C3AED",
+    "Dulaglutide": "#0D9488",
+    "Exenatide":   "#D97706",
+}
+
+top_reactions_json  = top_reactions.to_json(orient="records")
+by_drug_json        = by_drug.to_json(orient="records")
+sex_dist_json       = sex_dist.to_json(orient="records")
+outcome_dist_json   = outcome_dist.to_json(orient="records")
+yearly_json         = yearly.to_json(orient="records")
+age_dist_json       = age_dist.to_json(orient="records")
+serious_json        = serious_df.fillna("—").to_json(orient="records")
+drugs_json          = json.dumps(drugs)
+drug_colors_json    = json.dumps(drug_colors)
+
+generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAERS GLP-1 Adverse Event Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {{
+    --bg: #F5F6F8; --surface: #FFFFFF; --surface2: #F0F2F5;
+    --border: rgba(0,0,0,0.08); --border2: rgba(0,0,0,0.14);
+    --text: #1A1D23; --text2: #5A6072; --text3: #9099AD;
+    --red: #E24B4A; --red-bg: #FEF0F0; --red-dark: #791F1F;
+    --amber: #D97706; --amber-bg: #FEF3C7; --amber-dark: #633806;
+    --blue: #2563EB; --blue-bg: #EFF6FF; --blue-dark: #1e3a8a;
+    --green: #16A34A; --green-bg: #F0FDF4; --green-dark: #166534;
+    --purple: #7C3AED; --purple-bg: #F5F3FF;
+    --teal: #0D9488; --teal-bg: #F0FDFA;
+    --radius: 10px; --radius-sm: 6px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); }}
+
+  .topbar {{
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 2rem; display: flex; align-items: center; gap: 1rem;
+    height: 56px; position: sticky; top: 0; z-index: 100;
+    box-shadow: var(--shadow);
+  }}
+  .topbar-title {{ font-size: 15px; font-weight: 600; }}
+  .topbar-right {{ margin-left: auto; font-size: 11px; color: var(--text3); }}
+  .badge {{ font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px; letter-spacing: 0.03em; }}
+  .badge-blue {{ background: var(--blue-bg); color: var(--blue-dark); }}
+  .badge-red  {{ background: var(--red-bg);  color: var(--red-dark); }}
+  .badge-teal {{ background: var(--teal-bg); color: var(--teal); }}
+
+  .page {{ max-width: 1280px; margin: 0 auto; padding: 1.5rem 1.5rem 3rem; }}
+
+  .filter-bar {{
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 20px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 1.25rem; box-shadow: var(--shadow);
+  }}
+  .filter-bar label {{ font-size: 12px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; }}
+  .filter-bar select {{
+    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+    color: var(--text); background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm); padding: 6px 28px 6px 10px; appearance: none; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239099AD' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+  }}
+  .filter-bar select:focus {{ outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }}
+  .filter-sep {{ width: 1px; height: 24px; background: var(--border2); }}
+  .filter-reset {{
+    font-size: 12px; font-weight: 500; color: var(--text3); background: none;
+    border: none; cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+  }}
+  .filter-reset:hover {{ background: var(--surface2); color: var(--text); }}
+  #recCount {{ font-size: 11px; background: var(--blue-bg); color: var(--blue-dark); border-radius: 20px; padding: 2px 8px; font-weight: 600; margin-left: auto; }}
+
+  .kpi-grid {{ display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; margin-bottom: 1.25rem; }}
+  @media(max-width:900px){{ .kpi-grid {{ grid-template-columns: repeat(3,1fr); }} }}
+  .kpi-card {{
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1rem 1.25rem;
+    box-shadow: var(--shadow); position: relative; overflow: hidden;
+  }}
+  .kpi-card::before {{ content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius: var(--radius) var(--radius) 0 0; }}
+  .kpi-card.c-blue::before {{ background: var(--blue); }}
+  .kpi-card.c-red::before  {{ background: var(--red); }}
+  .kpi-card.c-amber::before {{ background: var(--amber); }}
+  .kpi-card.c-purple::before {{ background: var(--purple); }}
+  .kpi-card.c-green::before {{ background: var(--green); }}
+  .kpi-label {{ font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); margin-bottom: 8px; }}
+  .kpi-value {{ font-size: 26px; font-weight: 600; line-height: 1; margin-bottom: 4px; }}
+  .kpi-card.c-blue .kpi-value {{ color: var(--blue); }}
+  .kpi-card.c-red  .kpi-value {{ color: var(--red); }}
+  .kpi-card.c-amber .kpi-value {{ color: var(--amber); }}
+  .kpi-card.c-purple .kpi-value {{ color: var(--purple); }}
+  .kpi-card.c-green .kpi-value {{ color: var(--green); }}
+  .kpi-sub {{ font-size: 11px; color: var(--text3); }}
+
+  .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }}
+  .grid-3 {{ display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 12px; }}
+  @media(max-width:760px){{ .grid-2,.grid-3 {{ grid-template-columns: 1fr; }} }}
+
+  .card {{
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.25rem; box-shadow: var(--shadow);
+  }}
+  .card-title {{ font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text3); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }}
+  .dot {{ display: inline-block; width: 6px; height: 6px; border-radius: 50%; }}
+  .legend {{ display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }}
+  .legend-item {{ display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text2); }}
+  .legend-dot {{ width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }}
+
+  .section-header {{ font-size: 13px; font-weight: 600; color: var(--text); margin: 1.5rem 0 0.75rem; display: flex; align-items: center; gap: 8px; }}
+  .section-header::after {{ content:''; flex:1; height:1px; background: var(--border); }}
+
+  .disclaimer {{
+    background: #FFFBEB; border: 1px solid #FDE68A; border-radius: var(--radius);
+    padding: 12px 16px; font-size: 12px; color: #92400E; margin-bottom: 1.25rem;
+    display: flex; align-items: flex-start; gap: 8px;
+  }}
+
+  .table-wrap {{ overflow-x: auto; }}
+  table.data-table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
+  table.data-table thead th {{
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text3); padding: 8px 12px; text-align: left;
+    border-bottom: 1px solid var(--border); background: var(--surface2); white-space: nowrap;
+  }}
+  table.data-table tbody td {{ padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); white-space: nowrap; }}
+  table.data-table tbody tr:last-child td {{ border-bottom: none; }}
+  table.data-table tbody tr:hover td {{ background: var(--blue-bg); }}
+  .mono {{ font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text2); }}
+  .tag {{ display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }}
+  .tag-fatal {{ background: var(--red-bg); color: var(--red-dark); }}
+  .tag-notrecov {{ background: var(--amber-bg); color: var(--amber-dark); }}
+
+  .drug-pill {{
+    display: inline-block; font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 20px; color: white;
+  }}
+
+  .footer {{ text-align: center; padding: 2rem 0 1rem; font-size: 12px; color: var(--text3); border-top: 1px solid var(--border); margin-top: 2rem; }}
+  .footer a {{ color: var(--blue); text-decoration: none; }}
+  .footer a:hover {{ text-decoration: underline; }}
+  .empty {{ text-align: center; padding: 2rem; color: var(--text3); font-size: 13px; }}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <rect width="28" height="28" rx="7" fill="#E24B4A"/>
+    <path d="M9 14h2l2-4 2 8 2-5 1 1h1" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <span class="topbar-title">FAERS Adverse Event Analysis — GLP-1 Agonists</span>
+  <span class="badge badge-red">Pharmacovigilance</span>
+  <span class="badge badge-blue">openFDA · FAERS</span>
+  <span class="badge badge-teal">Real Data</span>
+  <span class="topbar-right">Generated: {generated_at}</span>
+</header>
+
+<main class="page">
+
+  <div class="disclaimer">
+    ⚠️ <span><strong>Disclaimer:</strong> This analysis uses publicly available data from the FDA Adverse Event Reporting System (FAERS) via openFDA. Reports are submitted voluntarily and may contain duplicates or incomplete information. This tool is for educational and portfolio purposes only and does not constitute medical or regulatory advice.</span>
+  </div>
+
+  <div class="filter-bar">
+    <label>Drug</label>
+    <select id="selDrug">
+      <option value="all">All GLP-1 Agonists</option>
+      <option value="Semaglutide">Semaglutide (Ozempic)</option>
+      <option value="Liraglutide">Liraglutide (Victoza)</option>
+      <option value="Dulaglutide">Dulaglutide (Trulicity)</option>
+      <option value="Exenatide">Exenatide (Byetta)</option>
+    </select>
+    <div class="filter-sep"></div>
+    <label>Outcome</label>
+    <select id="selOutcome">
+      <option value="all">All outcomes</option>
+      <option value="Fatal">Fatal</option>
+      <option value="Not recovered">Not recovered</option>
+      <option value="Recovered">Recovered</option>
+      <option value="Recovering">Recovering</option>
+      <option value="Unknown">Unknown</option>
+    </select>
+    <div class="filter-sep"></div>
+    <label>Sex</label>
+    <select id="selSex">
+      <option value="all">All</option>
+      <option value="Female">Female</option>
+      <option value="Male">Male</option>
+    </select>
+    <button class="filter-reset" id="btnReset">↺ Reset</button>
+    <span id="recCount">— records</span>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card c-blue">
+      <div class="kpi-label">Total Reports</div>
+      <div class="kpi-value" id="kTotal">{kpis["total_reports"]:,}</div>
+      <div class="kpi-sub">adverse event reports</div>
+    </div>
+    <div class="kpi-card c-red">
+      <div class="kpi-label">Serious Events</div>
+      <div class="kpi-value" id="kSerious">{kpis["serious_pct"]}%</div>
+      <div class="kpi-sub">of total reports</div>
+    </div>
+    <div class="kpi-card c-amber">
+      <div class="kpi-label">Fatal Outcomes</div>
+      <div class="kpi-value" id="kFatal">{kpis["fatal_pct"]}%</div>
+      <div class="kpi-sub">of total reports</div>
+    </div>
+    <div class="kpi-card c-purple">
+      <div class="kpi-label">Unique Reactions</div>
+      <div class="kpi-value" id="kReactions">{kpis["total_reactions"]:,}</div>
+      <div class="kpi-sub">MedDRA terms</div>
+    </div>
+    <div class="kpi-card c-green">
+      <div class="kpi-label">Drugs Analyzed</div>
+      <div class="kpi-value" id="kDrugs">{kpis["drugs"]}</div>
+      <div class="kpi-sub">GLP-1 agonists</div>
+    </div>
+  </div>
+
+  <div class="section-header">Adverse Reactions Overview</div>
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--red)"></span>Top 15 Adverse Reactions</div>
+      <div style="position:relative;height:300px;"><canvas id="chartReactions" role="img" aria-label="Top 15 adverse reactions"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--purple)"></span>Outcome Distribution</div>
+      <div id="legOutcome" class="legend"></div>
+      <div style="position:relative;height:250px;"><canvas id="chartOutcome" role="img" aria-label="Outcome distribution"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section-header">Drug Comparison</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Reports by Year</div>
+      <div id="legYearly" class="legend"></div>
+      <div style="position:relative;height:240px;"><canvas id="chartYearly" role="img" aria-label="Reports by year per drug"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Sex Distribution by Drug</div>
+      <div style="position:relative;height:240px;"><canvas id="chartSex" role="img" aria-label="Sex distribution by drug"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section-header">Age & Reaction Profile</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--amber)"></span>Reports by Age Group</div>
+      <div style="position:relative;height:230px;"><canvas id="chartAge" role="img" aria-label="Reports by age group"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--purple)"></span>Top Reactions by Drug</div>
+      <select id="selDrugReactions" style="font-family:'DM Sans',sans-serif;font-size:12px;padding:4px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);margin-bottom:10px;">
+        <option value="Semaglutide">Semaglutide</option>
+        <option value="Liraglutide">Liraglutide</option>
+        <option value="Dulaglutide">Dulaglutide</option>
+        <option value="Exenatide">Exenatide</option>
+      </select>
+      <div style="position:relative;height:200px;"><canvas id="chartDrugReactions" role="img" aria-label="Top reactions by drug"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section-header">Serious & Fatal Reports</div>
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--red)"></span>Serious adverse events — Fatal or Not Recovered (sample)</div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Drug</th><th>Reaction (MedDRA)</th><th>Outcome</th><th>Sex</th><th>Age</th><th>Country</th><th>Year</th></tr>
+        </thead>
+        <tbody id="seriousTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<footer class="footer">
+  <strong>María Paula Vera Morandini</strong> &nbsp;·&nbsp;
+  Biochemist | Study Coordinator &amp; QA | Clinical Data Management<br>
+  ICH-GCP E6(R3) Certified &nbsp;·&nbsp; ANMAT 7516/25 &nbsp;·&nbsp;
+  <a href="https://www.linkedin.com/in/maria-paula-vera-morandini-43b284399" target="_blank">LinkedIn</a>
+  &nbsp;·&nbsp; Buenos Aires, Argentina<br><br>
+  Data source: FDA Adverse Event Reporting System (FAERS) via openFDA public API ·
+  GLP-1 Agonists Pharmacovigilance Analysis
+</footer>
+
+<script>
+// ── Datos reales embebidos ─────────────────────────────────────────────────
+const TOP_REACTIONS  = {top_reactions_json};
+const BY_DRUG        = {by_drug_json};
+const SEX_DIST       = {sex_dist_json};
+const OUTCOME_DIST   = {outcome_dist_json};
+const YEARLY         = {yearly_json};
+const AGE_DIST       = {age_dist_json};
+const SERIOUS        = {serious_json};
+const DRUGS          = {drugs_json};
+const DRUG_COLORS    = {drug_colors_json};
+
+const OUTCOME_COLORS = {{
+  "Recovered":     "#16A34A",
+  "Recovering":    "#0D9488",
+  "Not recovered": "#D97706",
+  "Fatal":         "#E24B4A",
+  "Unknown":       "#9099AD",
+}};
+
+const charts = {{}};
+function destroyAll() {{ Object.values(charts).forEach(c => c && c.destroy()); }}
+
+function render() {{
+  const drug    = document.getElementById('selDrug').value;
+  const outcome = document.getElementById('selOutcome').value;
+  const sex     = document.getElementById('selSex').value;
+
+  // Filter serious table
+  let serious = SERIOUS.filter(r =>
+    (drug    === 'all' || r.drug    === drug) &&
+    (outcome === 'all' || r.outcome === outcome) &&
+    (sex     === 'all' || r.sex     === sex)
+  );
+
+  document.getElementById('recCount').textContent = serious.length + ' records';
+
+  destroyAll();
+
+  // Chart 1 — Top reactions
+  const rxData = drug === 'all' ? TOP_REACTIONS :
+    BY_DRUG.filter(r => r.drug === drug).slice(0,15);
+  const rxLabels = rxData.map(r => r.reaction);
+  const rxVals   = rxData.map(r => r.count);
+  charts.reactions = new Chart(document.getElementById('chartReactions'), {{
+    type:'bar',
+    data:{{ labels:rxLabels, datasets:[{{ data:rxVals, backgroundColor:'#E24B4A', borderWidth:0, borderRadius:4 }}] }},
+    options:{{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{{ legend:{{display:false}}, tooltip:{{callbacks:{{label:ctx=>' '+ctx.raw+' reports'}}}} }},
+      scales:{{
+        x:{{ grid:{{color:'rgba(0,0,0,0.05)'}}, ticks:{{font:{{family:'DM Sans',size:10}},color:'#9099AD'}} }},
+        y:{{ grid:{{display:false}}, ticks:{{font:{{family:'DM Sans',size:10}},color:'#5A6072'}} }}
+      }}
+    }}
+  }});
+
+  // Chart 2 — Outcome donut
+  const outcomeMap = {{}};
+  OUTCOME_DIST.filter(r => drug === 'all' || r.drug === drug)
+    .forEach(r => {{ outcomeMap[r.outcome] = (outcomeMap[r.outcome]||0) + r.count; }});
+  const outLabels = Object.keys(outcomeMap);
+  const outVals   = outLabels.map(k => outcomeMap[k]);
+  const outColors = outLabels.map(k => OUTCOME_COLORS[k] || '#9099AD');
+  const outTotal  = outVals.reduce((a,b)=>a+b,0);
+  document.getElementById('legOutcome').innerHTML = outLabels.map((l,i)=>
+    `<div class="legend-item"><span class="legend-dot" style="background:${{outColors[i]}}"></span>${{l}} <strong>${{outVals[i]}}</strong></div>`
+  ).join('');
+  charts.outcome = new Chart(document.getElementById('chartOutcome'), {{
+    type:'doughnut',
+    data:{{ labels:outLabels, datasets:[{{ data:outVals, backgroundColor:outColors, borderWidth:3, borderColor:'#fff', hoverOffset:6 }}] }},
+    options:{{ responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{{ legend:{{display:false}}, tooltip:{{callbacks:{{label:ctx=>` ${{ctx.label}}: ${{ctx.raw}} (${{Math.round(ctx.raw/outTotal*100)}}%)`}}}} }}
+    }}
+  }});
+
+  // Chart 3 — Yearly line
+  const years = [...new Set(YEARLY.map(r=>r.year))].sort();
+  document.getElementById('legYearly').innerHTML = DRUGS.map(d=>
+    `<div class="legend-item"><span class="legend-dot" style="background:${{DRUG_COLORS[d]}}"></span>${{d}}</div>`
+  ).join('');
+  const yearlyDsets = DRUGS
+    .filter(d => drug === 'all' || d === drug)
+    .map(d => {{
+      const drugData = years.map(y => {{
+        const r = YEARLY.find(r=>r.drug===d && r.year===y);
+        return r ? r.count : 0;
+      }});
+      return {{
+        label: d, data: drugData,
+        borderColor: DRUG_COLORS[d], backgroundColor: DRUG_COLORS[d]+'22',
+        borderWidth: 2, pointRadius: 4, tension: 0.3, fill: false,
+      }};
+    }});
+  charts.yearly = new Chart(document.getElementById('chartYearly'), {{
+    type:'line',
+    data:{{ labels:years.map(String), datasets:yearlyDsets }},
+    options:{{ responsive:true, maintainAspectRatio:false,
+      plugins:{{ legend:{{display:false}} }},
+      scales:{{
+        x:{{ grid:{{color:'rgba(0,0,0,0.05)'}}, ticks:{{font:{{family:'DM Sans',size:11}},color:'#5A6072'}} }},
+        y:{{ grid:{{color:'rgba(0,0,0,0.05)'}}, ticks:{{font:{{family:'DM Sans',size:11}},color:'#9099AD'}} }}
+      }}
+    }}
+  }});
+
+  // Chart 4 — Sex distribution
+  const sexDrugs = drug === 'all' ? DRUGS : [drug];
+  const sexDsets = ["Female","Male"].map((s,si) => {{
+    return {{
+      label: s,
+      data: sexDrugs.map(d => {{
+        const r = SEX_DIST.find(r=>r.drug===d&&r.sex===s);
+        return r ? r.count : 0;
+      }}),
+      backgroundColor: si===0 ? '#7C3AED' : '#2563EB',
+      borderWidth: 0, borderRadius: 3, stack:'s'
+    }};
+  }});
+  charts.sex = new Chart(document.getElementById('chartSex'), {{
+    type:'bar',
+    data:{{ labels:sexDrugs, datasets:sexDsets }},
+    options:{{ responsive:true, maintainAspectRatio:false,
+      plugins:{{ legend:{{display:true, position:'bottom', labels:{{font:{{family:'DM Sans',size:11}},boxWidth:12}} }} }},
+      scales:{{
+        x:{{ grid:{{display:false}}, ticks:{{font:{{family:'DM Sans',size:11}},color:'#5A6072'}} }},
+        y:{{ stacked:true, grid:{{color:'rgba(0,0,0,0.05)'}}, ticks:{{font:{{family:'DM Sans',size:11}},color:'#9099AD'}} }}
+      }}
+    }}
+  }});
+
+  // Chart 5 — Age distribution
+  const ageGroups = ["18-30","31-45","46-60","61-75","76+"];
+  const ageDsets = DRUGS.filter(d => drug==='all' || d===drug).map(d => {{
+    return {{
+      label: d,
+      data: ageGroups.map(ag => {{
+        const r = AGE_DIST.find(r=>r.drug===d&&r.age_group===ag);
+        return r ? r.count : 0;
+      }}),
+      backgroundColor: DRUG_COLORS[d], borderWidth:0, borderRadius:3, stack:'s'
+    }};
+  }});
+  charts.age = new Chart(document.getElementById('chartAge'), {{
+    type:'bar',
+    data:{{ labels:ageGroups, datasets:ageDsets }},
+    options:{{ responsive:true, maintainAspectRatio:false,
+      plugins:{{ legend:{{display:true, position:'bottom', labels:{{font:{{family:'DM Sans',size:11}},boxWidth:12}} }} }},
+      scales:{{
+        x:{{ grid:{{display:false}}, ticks:{{font:{{family:'DM Sans',size:11}},color:'#5A6072'}} }},
+        y:{{ stacked:true, grid:{{color:'rgba(0,0,0,0.05)'}}, ticks:{{font:{{family:'DM Sans',size:11}},color:'#9099AD'}} }}
+      }}
+    }}
+  }});
+
+  // Serious table
+  const tbody = document.getElementById('seriousTable');
+  if (serious.length === 0) {{
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">No records match the current filters.</td></tr>`;
+  }} else {{
+    tbody.innerHTML = serious.slice(0,20).map(r=>`<tr>
+      <td><span class="drug-pill" style="background:${{DRUG_COLORS[r.drug]||'#888'}}">${{r.drug}}</span></td>
+      <td>${{r.reaction}}</td>
+      <td><span class="tag ${{r.outcome==='Fatal'?'tag-fatal':'tag-notrecov'}}">${{r.outcome}}</span></td>
+      <td>${{r.sex}}</td>
+      <td class="mono">${{r.age !== '—' ? r.age+' y' : '—'}}</td>
+      <td>${{r.country}}</td>
+      <td class="mono">${{r.year !== '—' ? r.year : '—'}}</td>
+    </tr>`).join('');
+  }}
+}}
+
+// Chart 6 — Top reactions by drug (independent selector)
+function renderDrugReactions() {{
+  const d = document.getElementById('selDrugReactions').value;
+  if (charts.drugRxn) charts.drugRxn.destroy();
+  const data = BY_DRUG.filter(r=>r.drug===d).slice(0,10);
+  charts.drugRxn = new Chart(document.getElementById('chartDrugReactions'), {{
+    type:'bar',
+    data:{{ labels:data.map(r=>r.reaction), datasets:[{{ data:data.map(r=>r.count), backgroundColor: DRUG_COLORS[d], borderWidth:0, borderRadius:4 }}] }},
+    options:{{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{{ legend:{{display:false}} }},
+      scales:{{
+        x:{{ grid:{{color:'rgba(0,0,0,0.05)'}}, ticks:{{font:{{family:'DM Sans',size:10}},color:'#9099AD'}} }},
+        y:{{ grid:{{display:false}}, ticks:{{font:{{family:'DM Sans',size:10}},color:'#5A6072'}} }}
+      }}
+    }}
+  }});
+}}
+
+['selDrug','selOutcome','selSex'].forEach(id =>
+  document.getElementById(id).addEventListener('change', render)
+);
+document.getElementById('btnReset').addEventListener('click', () => {{
+  ['selDrug','selOutcome','selSex'].forEach(id => document.getElementById(id).value='all');
+  render();
+}});
+document.getElementById('selDrugReactions').addEventListener('change', renderDrugReactions);
+
+render();
+renderDrugReactions();
+</script>
+</body>
+</html>"""
+
+with open("index.html", "w", encoding="utf-8") as f:
+    f.write(html)
+
+print(f"✅ Dashboard generado: index.html")
+print(f"   Subí index.html a GitHub Pages para publicarlo.")

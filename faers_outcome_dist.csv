@@ -1,0 +1,20 @@
+drug,outcome,count
+Dulaglutide,Not recovered,251
+Dulaglutide,Recovered,337
+Dulaglutide,Recovering,100
+Dulaglutide,Unknown,903
+Exenatide,Fatal,13
+Exenatide,Not recovered,235
+Exenatide,Recovered,429
+Exenatide,Recovering,117
+Exenatide,Unknown,1617
+Liraglutide,Fatal,6
+Liraglutide,Not recovered,301
+Liraglutide,Recovered,664
+Liraglutide,Recovering,105
+Liraglutide,Unknown,1033
+Semaglutide,Fatal,9
+Semaglutide,Not recovered,1108
+Semaglutide,Recovered,901
+Semaglutide,Recovering,178
+Semaglutide,Unknown,2392

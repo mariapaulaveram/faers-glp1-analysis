@@ -1,0 +1,41 @@
+drug,reaction,count
+Dulaglutide,Nausea,117
+Dulaglutide,Vomiting,73
+Dulaglutide,Diarrhoea,61
+Dulaglutide,Blood glucose increased,51
+Dulaglutide,Injection site pain,45
+Dulaglutide,Weight decreased,30
+Dulaglutide,Decreased appetite,29
+Dulaglutide,Drug dose omission,25
+Dulaglutide,Malaise,25
+Dulaglutide,Dehydration,23
+Exenatide,Weight decreased,74
+Exenatide,Blood glucose increased,67
+Exenatide,Nausea,66
+Exenatide,Pancreatic carcinoma,47
+Exenatide,Product quality issue,39
+Exenatide,Vomiting,38
+Exenatide,Decreased appetite,37
+Exenatide,Drug dose omission,35
+Exenatide,Injection site haemorrhage,34
+Exenatide,Injection site pain,34
+Liraglutide,Nausea,96
+Liraglutide,Vomiting,63
+Liraglutide,Pancreatic carcinoma,39
+Liraglutide,Diarrhoea,38
+Liraglutide,Headache,30
+Liraglutide,Pancreatitis,28
+Liraglutide,Off label use,27
+Liraglutide,Decreased appetite,26
+Liraglutide,Renal failure acute,24
+Liraglutide,Dizziness,23
+Semaglutide,Nausea,238
+Semaglutide,Vomiting,179
+Semaglutide,Diarrhoea,131
+Semaglutide,Dizziness,60
+Semaglutide,Headache,60
+Semaglutide,Decreased appetite,55
+Semaglutide,Weight decreased,53
+Semaglutide,Fatigue,52
+Semaglutide,Off label use,52
+Semaglutide,Blood glucose increased,47
